@@ -8,17 +8,19 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Bindable var store: NoteStore
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        TextEditor(text: $store.text)
+            .font(.body)
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+            .frame(minWidth: 200, minHeight: 120)
     }
 }
 
 #Preview {
-    ContentView()
+    ContentView(store: NoteStore())
 }
