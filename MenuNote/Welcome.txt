@@ -1,0 +1,9 @@
+This is 📝 MenuNote. It’s a simple tool for writing plain-text notes, right in your Mac’s menu bar. That’s all it does.
+
+Per default, the system-wide hotkey is set to Control-N. 
+
+Clicking ••• opens the menu where you can change the hotkey and font. 
+
+MenuNote is automatically saved on your Mac as a text file. You can move the file to a synced folder. 
+
+You can press Esc to close this window. To clear this text, press Command-A and then Delete.

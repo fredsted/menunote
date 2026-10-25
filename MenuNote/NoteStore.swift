@@ -17,7 +17,13 @@ final class NoteStore {
 
     init(settings: AppSettings) {
         self.settings = settings
-        load()
+        load(creatingWith: settings.isFirstLaunch ? Self.welcomeText : "")
+    }
+
+    /// The introductory note shown on first launch, from Welcome.txt in the app bundle.
+    private static var welcomeText: String {
+        Bundle.main.url(forResource: "Welcome", withExtension: "txt")
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
     }
 
     /// Saves the current note, then opens an existing file instead.

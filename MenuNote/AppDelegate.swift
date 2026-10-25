@@ -170,11 +170,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
 /// Floating, resizable panel that reports the Escape key.
 final class NotePanel: NSPanel {
+    static let defaultSize = NSSize(width: 555, height: 306)
+
     var onEscape: (() -> Void)?
 
     init(contentViewController: NSViewController) {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            contentRect: NSRect(origin: .zero, size: Self.defaultSize),
             styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
             backing: .buffered,
             defer: true
@@ -189,8 +191,8 @@ final class NotePanel: NSPanel {
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
         minSize = NSSize(width: 200, height: 120)
-        setContentSize(NSSize(width: 320, height: 240))
-        setFrameAutosaveName("NotePanel")
+        setFrame(NSRect(origin: .zero, size: Self.defaultSize), display: false)
+        setFrameAutosaveName("NotePanel") // Restores the user's size, if saved.
     }
 
     override var canBecomeKey: Bool { true }
