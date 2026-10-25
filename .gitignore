@@ -63,3 +63,6 @@ playground.xcworkspace
 
 # Swift Package Manager
 # Package.resolved
+### Release
+# Zips produced by make-release.sh
+dist/
