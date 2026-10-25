@@ -6,6 +6,10 @@
 
 <p align="center">A simple plain-text note, right in your Mac's menu bar.</p>
 
+<p align="center">
+  <img src="/screenshot.png" width="400" alt="MenuNote Screenshot">
+</p>
+
 ## Features
 
 - **Click the menu bar icon** to open a small, resizable note window. Click again to close it.
