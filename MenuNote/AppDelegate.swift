@@ -7,9 +7,12 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    private let store = NoteStore()
+    private let settings = AppSettings()
+    private lazy var store = NoteStore(settings: settings)
+    private let hotKey = GlobalHotKey()
     private var statusItem: NSStatusItem!
     private var panel: NotePanel!
+    private var settingsWindow: NSWindow?
     private let contextMenu = NSMenu()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -22,12 +25,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         contextMenu.addItem(withTitle: "About MenuNote", action: #selector(showAbout), keyEquivalent: "").target = self
+        contextMenu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         contextMenu.addItem(.separator())
         contextMenu.addItem(withTitle: "Quit MenuNote", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 
-        panel = NotePanel(contentViewController: NSHostingController(rootView: ContentView(store: store)))
+        panel = NotePanel(contentViewController: NSHostingController(rootView: ContentView(store: store, settings: settings)))
         panel.delegate = self
         panel.onEscape = { [weak self] in self?.closeNote() }
+        addMenuButton(to: panel)
+
+        hotKey.onPress = { [weak self] in self?.toggleNoteFromHotKey() }
+        observeHotKey()
+    }
+
+    /// Puts a ••• button on the right of the title bar that opens the app menu.
+    private func addMenuButton(to window: NSWindow) {
+        let button = NSButton(
+            image: NSImage(systemSymbolName: "ellipsis", accessibilityDescription: "Menu")!,
+            target: self,
+            action: #selector(menuButtonClicked(_:))
+        )
+        button.isBordered = false
+        button.contentTintColor = .secondaryLabelColor
+        button.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
+        button.frame = NSRect(x: 0, y: 0, width: 30, height: 20)
+
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = button
+        accessory.layoutAttribute = .trailing
+        window.addTitlebarAccessoryViewController(accessory)
+    }
+
+    @objc private func menuButtonClicked(_ sender: NSButton) {
+        let below = NSPoint(x: 0, y: sender.isFlipped ? sender.bounds.maxY + 4 : -4)
+        contextMenu.popUp(positioning: nil, at: below, in: sender)
+    }
+
+    /// Keeps the registered global hotkey in sync with settings.
+    private func observeHotKey() {
+        withObservationTracking {
+            hotKey.register(settings.isRecordingHotKey ? nil : settings.hotKey)
+        } onChange: {
+            Task { @MainActor in self.observeHotKey() }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -39,7 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        store.save()
+        if notification.object as? NSWindow === panel {
+            store.save()
+        }
     }
 
     @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
@@ -56,7 +98,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    /// Hides the note if it's open and focused; otherwise shows and focuses it,
+    /// so a note sitting behind another app's window is brought forward rather than hidden.
+    private func toggleNoteFromHotKey() {
+        if panel.isVisible && panel.isKeyWindow && NSApp.isActive {
+            closeNote()
+        } else {
+            showNote()
+        }
+    }
+
     private func showNote() {
+        if !panel.isVisible {
+            store.reloadIfUnchanged()
+            positionPanel()
+        }
+        NSApp.unhide(nil)
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    private func positionPanel() {
         if let buttonFrame = statusItem.button?.window?.frame {
             let size = panel.frame.size
             var origin = NSPoint(x: buttonFrame.midX - size.width / 2, y: buttonFrame.minY - size.height - 4)
@@ -65,18 +127,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             panel.setFrameOrigin(origin)
         }
-        NSApp.activate()
-        panel.makeKeyAndOrderFront(nil)
     }
 
     private func closeNote() {
         store.save()
         panel.orderOut(nil)
+        // Hand focus back to the previous app, unless Settings is still open.
+        if settingsWindow?.isVisible != true {
+            NSApp.hide(nil)
+        }
+    }
+
+    @objc private func showSettings() {
+        if settingsWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(settings: settings, store: store)))
+            window.title = "MenuNote Settings"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            // Match the floating note panel so Settings can appear above it.
+            window.level = panel.level
+            window.center()
+            settingsWindow = window
+        }
+        NSApp.unhide(nil)
+        NSApp.activate()
+        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func showAbout() {
+        NSApp.unhide(nil)
         NSApp.activate()
         NSApp.orderFrontStandardAboutPanel(nil)
+        // AppKit doesn't expose the About panel, so find it: the only other titled, visible window.
+        // (The status item's window is untitled.) Lift it to the note panel's level so it shows above.
+        for window in NSApp.windows where window.isVisible && window.styleMask.contains(.titled)
+            && window !== panel && window !== settingsWindow {
+            window.level = panel.level
+            window.orderFront(nil)
+        }
     }
 }
 
@@ -87,14 +175,16 @@ final class NotePanel: NSPanel {
     init(contentViewController: NSViewController) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .resizable, .utilityWindow, .fullSizeContentView],
             backing: .buffered,
             defer: true
         )
         self.contentViewController = contentViewController
         title = "MenuNote"
-        titleVisibility = .hidden
+        titleVisibility = .visible
         titlebarAppearsTransparent = true
+        standardWindowButton(.zoomButton)?.isHidden = true
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
         isFloatingPanel = true
         hidesOnDeactivate = false
         isReleasedWhenClosed = false
